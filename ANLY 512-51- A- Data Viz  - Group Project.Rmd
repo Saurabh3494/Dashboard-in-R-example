@@ -1,0 +1,149 @@
+---
+title: "ANLY 512-51- A- Data Viz  - Group Project"
+author: "Saurabh Shirish Prabhu"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(shiny)
+```
+
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(ggplot2)
+library(plotly)
+library(dplyr)
+library(lubridate)
+library(XML)
+library(reshape2)
+  
+setwd("F:/a_Harrisburg_University_Academics/ANLY 512-51- A-2024Summer - Data Visualization/Dashboard/DashboardTrial")
+xml <- xmlParse("export.xml")
+df <- XML:::xmlAttrsToDataFrame(xml["//Record"])
+df$value = as.numeric(as.character(df$value))
+df$endDate = ymd_hms(df$endDate,tz="America/New_York")
+df$month = format(df$endDate,"%m")
+df$year = format(df$endDate,"%Y")
+df$date = format(df$endDate,"%Y-%m-%d")
+df$dayofweek = wday(df$endDate, label=TRUE, abbr=FALSE)
+df$hour = format(df$endDate,"%H")
+```
+
+Overview {data-orientation=rows}
+=====================================================================
+
+Row
+---------------------------------------------------------
+
+###Quantified self
+The Quantified Self (QS) is a movement motivated to leverage the synergy of wearables, analytics, and “Big Data”. With the help of data visualization, people can explore the relationship among different activities, items, and ect. The QS can also help people to have a better understanding on their daily live, as the data can come from any resources. Typically, People collect data in terms of food consumed, quality of surrounding air, mood, skin conductance as a proxy for arousal, pulse oximetry for blood oxygen level, and performance, whether mental or physical. 
+
+As part of this project, I am using the Apple watch data to analyse my friend's distace he covers, heart rate, exercice pattern, steps energy burned etc. There were several R packages that were used to process the data. Following are the questions to which I plan to find answers to:
+
+1. What is the average heart rate?
+2. Is there a direct correlation between the calories burned and the number of steps moved?
+3. On a monthly basis, how many steps has he taken in 2019? Is there a pattern?
+4. Is there a pattern that exists for running/walking distance?
+5. What is the exercise routine like?
+
+
+Steps {data-orientation=rows}
+====================================================
+
+Row {data-height=750}
+-----------------------------------------------------------------------
+
+### On a monthly base, how many steps have I made in 2019? 
+
+```{r}
+stepsbyday = summarize(group_by(filter(df[df$year==2019,], type == 'HKQuantityTypeIdentifierStepCount'), month, date), steps=sum(value))
+layout(plot_ly(stepsbyday, y = ~steps, color= ~month, type="box"), title="Distribution of Daily Steps by Month - 2019", yaxis=list(title="Steps"), xaxis=list(title="Month"))
+```
+
+### Which weekdays are my most active day?
+
+```{r}
+#heatmap by hour
+ggplot(summarize(group_by(filter(df, type == 'HKQuantityTypeIdentifierStepCount'), dayofweek,hour), steps=sum(value)), aes(dayofweek, hour, fill = steps)) + geom_tile() + scale_fill_continuous(labels = scales::comma, low = 'yellow', high = 'red') 
+```
+
+Calories Burned {data-orientation=rows}
+====================================================
+Row {data-height=750}
+-----------------------------------------------------------------------
+### What is the relationship between Calories burned and steps?
+```{r}
+energyburnbyday = summarize(group_by(filter(df, type == 'HKQuantityTypeIdentifierActiveEnergyBurned'), dayofweek,month,date,year), energy=sum(value))
+df2<-merge(stepsbyday,energyburnbyday,by="date") 
+ggplot(df2, aes(x = steps, y = energy)) + 
+    stat_smooth(method = "lm", col = "blue") +
+    geom_point() +
+    ylab("energy burned")
+```
+
+Distance {data-orientation=rows}
+====================================================
+
+Row {data-height=750}
+-----------------------------------------------------------------------
+
+### Do I have a specific pattern for the walking+running distance? 
+
+```{r}
+distancebyday = summarize(group_by( filter(df, type == 'HKQuantityTypeIdentifierDistanceWalkingRunning'), dayofweek,month,date,year), distance=sum(value))
+layout(plot_ly(data = distancebyday[distancebyday$year==2019,], x = ~month, y = ~distance, type="bar",color = ~dayofweek, colors = "Set1"), yaxis = list(title = 'distance(miles)'), barmode = 'stack', title="walking+running distance in Jan-2019 to Aug-2019")
+```
+
+### Can I increase disctance by making more steps?
+
+```{r}
+#steps and distance
+
+ plot_ly(merge(stepsbyday,distancebyday,by="date"), 
+         x = ~steps, 
+         y = ~distance, 
+         type="scatter",
+         mode = "markers", 
+         color = ~dayofweek, 
+         size = ~distance, 
+         text = ~paste('date: ', date))
+  
+```
+
+Heart Rate {data-orientation=rows}
+====================================================
+
+Row {data-height=750}
+-----------------------------------------------------------------------
+###What is my average heart rate?
+```{r}
+ # average heart rate line plot
+heartrate = summarize(group_by(filter(df, type == 'HKQuantityTypeIdentifierHeartRate'), hour, dayofweek), hr=(mean(na.omit(value)))) 
+hrdf<-heartrate[heartrate$dayofweek==heartrate$dayofweek[1],]
+p<-plot_ly(y=hrdf$hr, x=hrdf$hour , type="scatter", mode="lines", name=heartrate$dayofweek[1])
+for(i in 2:7)
+ {
+  hrdf<-heartrate[heartrate$dayofweek==heartrate$dayofweek[i],]
+  p<-add_trace(p, y=hrdf$hr, x=hrdf$hour , type="scatter", mode="lines", name=heartrate$dayofweek[i] )
+}
+
+layout(p, title="Average Heart Rate by hour",xaxis = list(title="time"), yaxis = list(title="heartrate"))
+```
+
+Exercise {data-orientation=rows}
+====================================================
+
+Row {data-height=750}
+-----------------------------------------------------------------------
+### What is my exercise routine?
+```{r}
+et = ggplot(summarize(group_by(filter(df[df$year==2019,], type == 'HKQuantityTypeIdentifierAppleExerciseTime'), dayofweek,hour), et=sum(value)), aes(dayofweek, hour, fill = et)) + geom_tile() + scale_fill_continuous(labels = scales::comma, low = 'green', high = 'blue')  
+ggplotly(et)
+```
